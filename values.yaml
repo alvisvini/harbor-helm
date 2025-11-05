@@ -1055,10 +1055,16 @@ redis:
     trivyAdapterIndex: "5"
     # harborDatabaseIndex: "6"
     # cacheLayerDatabaseIndex: "7"
+    # Sentinel authentication (ACL) via URL query params. If set, they will be
+    # appended to redis+sentinel URLs as
+    # ?sentinel_username=<username>&sentinel_password=<password>. Can be empty.
+    sentinelUsername: ""
+    sentinelPassword: ""
     # username field can be an empty string, and it will be authenticated against the default user
     username: ""
     password: ""
-    # If using existingSecret, the key must be REDIS_PASSWORD, if ACL mode enabled, also inlcudes data of username, the keys must be REDIS_USERNAME
+    # If using existingSecret, the key must be REDIS_PASSWORD, if ACL mode enabled, also includes data of username, the keys must be REDIS_USERNAME
+    # For Sentinel ACL, optional keys: REDIS_SENTINEL_USERNAME and REDIS_SENTINEL_PASSWORD
     existingSecret: ""
   ## Additional deployment annotations
   podAnnotations: {}

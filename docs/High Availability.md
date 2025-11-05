@@ -49,6 +49,9 @@ Configure the following items in `values.yaml`, you can also set them as paramet
 - **External Redis**
    Set the `redis.type` to `external` and fill the information in `redis.external` section.
    Redis sentinel is supported after v1.9.0, configure the `redis.external.sentinelMasterSet` and `redis.external.addr` to enable it.
+   For Sentinel with ACL, set `redis.external.sentinelUsername` and `redis.external.sentinelPassword`. URLs are constructed as:
+   `redis+sentinel://<MASTER_USER>:<MASTER_PASS>@<sentinel1>:26379,<sentinel2>:26379/<MASTER_SET>/?sentinel_username=<SENT_USER>&sentinel_password=<SENT_PASS>`.
+   When TLS is enabled via `redis.external.tlsOptions.enable: true`, use `rediss+sentinel://` with the same query parameters.
 - **Storage**
    By default, a default `StorageClass` is needed in the K8S cluster to provision volumes to store images, charts and job logs.
 

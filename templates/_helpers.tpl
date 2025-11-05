@@ -197,6 +197,20 @@ app: "{{ template "harbor.name" . }}"
   {{- (lookup "v1" "Secret"  .Release.Namespace (.Values.redis.external.existingSecret)).data.REDIS_PASSWORD  | b64dec }}
 {{- end -}}
 
+{{- define "harbor.redis.sentinelUsernameFromSecret" -}}
+  {{- $existingSecret := (lookup "v1" "Secret"  .Release.Namespace (.Values.redis.external.existingSecret)) -}}
+  {{- if and (not (empty $existingSecret)) (hasKey $existingSecret.data "REDIS_SENTINEL_USERNAME") -}}
+    {{- printf "%s" ($existingSecret.data.REDIS_SENTINEL_USERNAME | b64dec | trim ) -}}
+  {{- end -}}
+{{- end -}}
+
+{{- define "harbor.redis.sentinelPwdFromSecret" -}}
+  {{- $existingSecret := (lookup "v1" "Secret"  .Release.Namespace (.Values.redis.external.existingSecret)) -}}
+  {{- if and (not (empty $existingSecret)) (hasKey $existingSecret.data "REDIS_SENTINEL_PASSWORD") -}}
+    {{- printf "%s" ($existingSecret.data.REDIS_SENTINEL_PASSWORD | b64dec | trim ) -}}
+  {{- end -}}
+{{- end -}}
+
 {{- define "harbor.redis.cred" -}}
   {{- with .Values.redis }}
     {{- if (and (eq .type "external" ) (.external.existingSecret)) }}
@@ -207,6 +221,22 @@ app: "{{ template "harbor.name" . }}"
   {{- end }}
 {{- end -}}
 
+{{- define "harbor.redis.sentinelQuery" -}}
+  {{- $scheme := include "harbor.redis.scheme" . -}}
+  {{- if contains "+sentinel" $scheme -}}
+    {{- $su := "" -}}
+    {{- $sp := "" -}}
+    {{- $suSecret := include "harbor.redis.sentinelUsernameFromSecret" . -}}
+    {{- $spSecret := include "harbor.redis.sentinelPwdFromSecret" . -}}
+    {{- if $suSecret }}{{- $su = $suSecret -}}{{- else }}{{- $su = .Values.redis.external.sentinelUsername -}}{{- end -}}
+    {{- if $spSecret }}{{- $sp = $spSecret -}}{{- else }}{{- $sp = .Values.redis.external.sentinelPassword -}}{{- end -}}
+    {{- $params := list -}}
+    {{- if $su }}{{- $params = append $params (printf "sentinel_username=%s" ($su | urlquery)) -}}{{- end -}}
+    {{- if $sp }}{{- $params = append $params (printf "sentinel_password=%s" ($sp | urlquery)) -}}{{- end -}}
+    {{- if gt (len $params) 0 }}{{- printf "%s" (join "&" $params) -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+
 /*scheme://[:password@]host:port[/master_set]*/
 {{- define "harbor.redis.url" -}}
   {{- with .Values.redis }}
@@ -215,52 +245,66 @@ app: "{{ template "harbor.name" . }}"
   {{- end }}
 {{- end -}}
 
-/*scheme://[:password@]addr/db_index?idle_timeout_seconds=30*/
+/*scheme://[:password@]addr/db_index?[idle_timeout_seconds=30][&sentinel_*]*/
 {{- define "harbor.redis.urlForCore" -}}
-  {{- with .Values.redis }}
-    {{- $index := ternary "0" .external.coreDatabaseIndex (eq .type "internal") }}
-    {{- printf "%s/%s?idle_timeout_seconds=30" (include "harbor.redis.url" $) $index -}}
-  {{- end }}
+  {{- $index := ternary "0" .Values.redis.external.coreDatabaseIndex (eq .Values.redis.type "internal") -}}
+  {{- $base := printf "%s/%s" (include "harbor.redis.url" .) $index -}}
+  {{- $qs := list "idle_timeout_seconds=30" -}}
+  {{- $sqs := include "harbor.redis.sentinelQuery" . -}}
+  {{- if $sqs }}{{- $qs = append $qs $sqs -}}{{- end -}}
+  {{- printf "%s?%s" $base (join "&" $qs) -}}
 {{- end -}}
 
-/*scheme://[:password@]addr/db_index*/
+/*scheme://[:password@]addr/db_index[?sentinel_*]*/
 {{- define "harbor.redis.urlForJobservice" -}}
-  {{- with .Values.redis }}
-    {{- $index := ternary .internal.jobserviceDatabaseIndex .external.jobserviceDatabaseIndex (eq .type "internal") }}
-    {{- printf "%s/%s" (include "harbor.redis.url" $) $index -}}
-  {{- end }}
+  {{- $index := ternary .Values.redis.internal.jobserviceDatabaseIndex .Values.redis.external.jobserviceDatabaseIndex (eq .Values.redis.type "internal") -}}
+  {{- $base := printf "%s/%s" (include "harbor.redis.url" .) $index -}}
+  {{- $sqs := include "harbor.redis.sentinelQuery" . -}}
+  {{- if $sqs }}
+    {{- printf "%s?%s" $base $sqs -}}
+  {{- else -}}
+    {{- printf "%s" $base -}}
+  {{- end -}}
 {{- end -}}
 
-/*scheme://[:password@]addr/db_index?idle_timeout_seconds=30*/
+/*scheme://[:password@]addr/db_index?[idle_timeout_seconds=30][&sentinel_*]*/
 {{- define "harbor.redis.urlForRegistry" -}}
-  {{- with .Values.redis }}
-    {{- $index := ternary .internal.registryDatabaseIndex .external.registryDatabaseIndex (eq .type "internal") }}
-    {{- printf "%s/%s?idle_timeout_seconds=30" (include "harbor.redis.url" $) $index -}}
-  {{- end }}
+  {{- $index := ternary .Values.redis.internal.registryDatabaseIndex .Values.redis.external.registryDatabaseIndex (eq .Values.redis.type "internal") -}}
+  {{- $base := printf "%s/%s" (include "harbor.redis.url" .) $index -}}
+  {{- $qs := list "idle_timeout_seconds=30" -}}
+  {{- $sqs := include "harbor.redis.sentinelQuery" . -}}
+  {{- if $sqs }}{{- $qs = append $qs $sqs -}}{{- end -}}
+  {{- printf "%s?%s" $base (join "&" $qs) -}}
 {{- end -}}
 
-/*scheme://[:password@]addr/db_index?idle_timeout_seconds=30*/
+/*scheme://[:password@]addr/db_index?[idle_timeout_seconds=30][&sentinel_*]*/
 {{- define "harbor.redis.urlForTrivy" -}}
-  {{- with .Values.redis }}
-    {{- $index := ternary .internal.trivyAdapterIndex .external.trivyAdapterIndex (eq .type "internal") }}
-    {{- printf "%s/%s?idle_timeout_seconds=30" (include "harbor.redis.url" $) $index -}}
-  {{- end }}
+  {{- $index := ternary .Values.redis.internal.trivyAdapterIndex .Values.redis.external.trivyAdapterIndex (eq .Values.redis.type "internal") -}}
+  {{- $base := printf "%s/%s" (include "harbor.redis.url" .) $index -}}
+  {{- $qs := list "idle_timeout_seconds=30" -}}
+  {{- $sqs := include "harbor.redis.sentinelQuery" . -}}
+  {{- if $sqs }}{{- $qs = append $qs $sqs -}}{{- end -}}
+  {{- printf "%s?%s" $base (join "&" $qs) -}}
 {{- end -}}
 
-/*scheme://[:password@]addr/db_index?idle_timeout_seconds=30*/
+/*scheme://[:password@]addr/db_index?[idle_timeout_seconds=30][&sentinel_*]*/
 {{- define "harbor.redis.urlForHarbor" -}}
-  {{- with .Values.redis }}
-    {{- $index := ternary .internal.harborDatabaseIndex .external.harborDatabaseIndex (eq .type "internal") }}
-    {{- printf "%s/%s?idle_timeout_seconds=30" (include "harbor.redis.url" $) $index -}}
-  {{- end }}
+  {{- $index := ternary .Values.redis.internal.harborDatabaseIndex .Values.redis.external.harborDatabaseIndex (eq .Values.redis.type "internal") -}}
+  {{- $base := printf "%s/%s" (include "harbor.redis.url" .) $index -}}
+  {{- $qs := list "idle_timeout_seconds=30" -}}
+  {{- $sqs := include "harbor.redis.sentinelQuery" . -}}
+  {{- if $sqs }}{{- $qs = append $qs $sqs -}}{{- end -}}
+  {{- printf "%s?%s" $base (join "&" $qs) -}}
 {{- end -}}
 
-/*scheme://[:password@]addr/db_index?idle_timeout_seconds=30*/
+/*scheme://[:password@]addr/db_index?[idle_timeout_seconds=30][&sentinel_*]*/
 {{- define "harbor.redis.urlForCache" -}}
-  {{- with .Values.redis }}
-    {{- $index := ternary .internal.cacheLayerDatabaseIndex .external.cacheLayerDatabaseIndex (eq .type "internal") }}
-    {{- printf "%s/%s?idle_timeout_seconds=30" (include "harbor.redis.url" $) $index -}}
-  {{- end }}
+  {{- $index := ternary .Values.redis.internal.cacheLayerDatabaseIndex .Values.redis.external.cacheLayerDatabaseIndex (eq .Values.redis.type "internal") -}}
+  {{- $base := printf "%s/%s" (include "harbor.redis.url" .) $index -}}
+  {{- $qs := list "idle_timeout_seconds=30" -}}
+  {{- $sqs := include "harbor.redis.sentinelQuery" . -}}
+  {{- if $sqs }}{{- $qs = append $qs $sqs -}}{{- end -}}
+  {{- printf "%s?%s" $base (join "&" $qs) -}}
 {{- end -}}
 
 {{- define "harbor.redis.dbForRegistry" -}}

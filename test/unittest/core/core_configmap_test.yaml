@@ -50,6 +50,25 @@ tests:
           path: data._REDIS_URL_HARBOR
           value: rediss+sentinel://192.168.0.2:6379/mymaster/test-index?idle_timeout_seconds=30
 
+  - it: RedisSentinelUrlHarborExternalTLSWithAuthParams
+    set:
+      redis:
+        external:
+          harborDatabaseIndex: test-index
+          tlsOptions:
+            enable: true
+          sentinelMasterSet: "mymaster"
+          username: "default"
+          password: "MASTER_PASS"
+          sentinelUsername: "SENT_USER"
+          sentinelPassword: "SENT_PASS"
+        type: external
+    template: templates/core/core-cm.yaml
+    asserts:
+      - equal:
+          path: data._REDIS_URL_HARBOR
+          value: rediss+sentinel://default:MASTER_PASS@192.168.0.2:6379/mymaster/test-index?idle_timeout_seconds=30&sentinel_username=SENT_USER&sentinel_password=SENT_PASS
+
   - it: CacheLayerDatabaseIndex
     set:
       redis:
