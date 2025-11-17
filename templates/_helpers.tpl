@@ -185,7 +185,6 @@ app: "{{ template "harbor.name" . }}"
   {{- end }}
 {{- end -}}
 
-
 {{- define "harbor.redis.usernamefromsecret" -}}
   {{- $existingSecret := (lookup "v1" "Secret"  .Release.Namespace (.Values.redis.external.existingSecret)) -}}
   {{- if and (not (empty $existingSecret)) (hasKey $existingSecret.data "REDIS_USERNAME") -}}
